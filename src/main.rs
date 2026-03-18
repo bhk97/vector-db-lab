@@ -26,8 +26,8 @@ fn main() {
             for v in dataset.iter_mut() {
                 normalize(v);
             }
-
             benchmark("Dot Product", &dataset, &query, dot_product);
+            
             benchmark("Cosine Similarity", &dataset, &query, cosine_similarity);
             benchmark("Euclidean Distance", &dataset, &query, euclidean_distance);
         }
@@ -43,14 +43,17 @@ fn benchmark(
 
     let k = 10;
 
-    let start = Instant::now();
+    let start_total = Instant::now();
 
-    let results = brute_force_top_k(dataset, query, k, metric);
+    // compute + sort separated
+    let (results, compute_time, sort_time) = brute_force_top_k(dataset, query, k, metric);
 
-    let duration = start.elapsed();
+    let total_time = start_total.elapsed();
 
     println!("\nMetric: {}", name);
-    println!("Latency: {:?}", duration);
+    println!("Compute Time: {:?}", compute_time);
+    println!("Sort Time: {:?}", sort_time);
+    println!("Total Latency: {:?}", total_time);
 
     println!("Top {} results:", k);
     for (idx, score) in results {
@@ -63,21 +66,30 @@ fn brute_force_top_k(
     query: &[f32],
     k: usize,
     metric: fn(&[f32], &[f32]) -> f32,
-) -> Vec<(usize, f32)> {
+) -> (Vec<(usize, f32)>, std::time::Duration, std::time::Duration) {
 
     let mut results: Vec<(usize, f32)> = Vec::with_capacity(dataset.len());
+
+    // COMPUTE TIMER
+    let compute_start = Instant::now();
 
     for (i, v) in dataset.iter().enumerate() {
         let score = metric(query, v);
         results.push((i, score));
     }
 
-    // partial sort for top-k
+    let compute_time = compute_start.elapsed();
+
+    // SORT TIMER
+    let sort_start = Instant::now();
+
     results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
     results.truncate(k);
 
-    results
+    let sort_time = sort_start.elapsed();
+
+    (results, compute_time, sort_time)
 }
 
 fn generate_embeddings(n: usize, dim: usize) -> Vec<Vec<f32>> {
