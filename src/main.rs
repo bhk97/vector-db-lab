@@ -1,43 +1,54 @@
 use rand::Rng;
 use std::time::Instant;
 use rand::RngExt;
+mod hnsw_manual;
+use hnsw_manual::*;
 fn main() {
 
-    // experiments
-    let dataset_sizes = [10_000, 100_000];
-    let dimensions = [64, 128, 384];
+    let graph = build_sample_graph();
 
-    for &n in &dataset_sizes {
-        for &dim in &dimensions {
+    let query = vec![0.8, 0.85];
 
-            println!("\n==============================");
-            println!("Dataset size: {}", n);
-            println!("Dimension: {}", dim);
-            println!("==============================");
+    let result = search(&graph, &query);
 
-            let dataset = generate_embeddings(n, dim);
+    println!("Search result node: {}", result);
+    // let dataset_sizes = [10_000, 100_000];
+    // let dimensions = [64, 128, 384];
 
-            let mut query = generate_embeddings(1, dim).remove(0);
+    // for &n in &dataset_sizes {
+    //     for &dim in &dimensions {
 
-            normalize(&mut query);
+    //         println!("\n==============================");
+    //         println!("Dataset size: {}", n);
+    //         println!("Dimension: {}", dim);
+    //         println!("==============================");
 
-            // normalize dataset
-            let mut dataset = dataset;
-            for v in dataset.iter_mut() {
-                normalize(v);
-            }
-            benchmark("Dot Product", &dataset, &query, dot_product);
-            
-            benchmark("Cosine Similarity", &dataset, &query, cosine_similarity);
-            benchmark("Euclidean Distance", &dataset, &query, euclidean_distance);
-        }
-    }
+    //         let mut dataset = generate_embeddings(n, dim);
+
+    //         let mut query = generate_embeddings(1, dim);
+
+    //         normalize(&mut query[0..dim]);
+
+    //         // normalize dataset
+    //         for i in 0..n {
+    //             let start = i * dim;
+    //             let end = start + dim;
+    //             normalize(&mut dataset[start..end]);
+    //         }
+
+    //         benchmark("Dot Product", &dataset, &query, n, dim, dot_product);
+    //         benchmark("Cosine Similarity", &dataset, &query, n, dim, cosine_similarity);
+    //         benchmark("Euclidean Distance", &dataset, &query, n, dim, euclidean_distance);
+    //     }
+    // }
 }
 
 fn benchmark(
     name: &str,
-    dataset: &Vec<Vec<f32>>,
+    dataset: &Vec<f32>,
     query: &[f32],
+    n: usize,
+    dim: usize,
     metric: fn(&[f32], &[f32]) -> f32,
 ) {
 
@@ -45,8 +56,8 @@ fn benchmark(
 
     let start_total = Instant::now();
 
-    // compute + sort separated
-    let (results, compute_time, sort_time) = brute_force_top_k(dataset, query, k, metric);
+    let (results, compute_time, sort_time) =
+        brute_force_top_k(dataset, query, n, dim, k, metric);
 
     let total_time = start_total.elapsed();
 
@@ -62,25 +73,32 @@ fn benchmark(
 }
 
 fn brute_force_top_k(
-    dataset: &Vec<Vec<f32>>,
+    dataset: &Vec<f32>,
     query: &[f32],
+    n: usize,
+    dim: usize,
     k: usize,
     metric: fn(&[f32], &[f32]) -> f32,
 ) -> (Vec<(usize, f32)>, std::time::Duration, std::time::Duration) {
 
-    let mut results: Vec<(usize, f32)> = Vec::with_capacity(dataset.len());
+    let mut results: Vec<(usize, f32)> = Vec::with_capacity(n);
 
-    // COMPUTE TIMER
     let compute_start = Instant::now();
 
-    for (i, v) in dataset.iter().enumerate() {
+    for i in 0..n {
+
+        let start = i * dim;
+        let end = start + dim;
+
+        let v = &dataset[start..end];
+
         let score = metric(query, v);
+
         results.push((i, score));
     }
 
     let compute_time = compute_start.elapsed();
 
-    // SORT TIMER
     let sort_start = Instant::now();
 
     results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -92,20 +110,14 @@ fn brute_force_top_k(
     (results, compute_time, sort_time)
 }
 
-fn generate_embeddings(n: usize, dim: usize) -> Vec<Vec<f32>> {
+fn generate_embeddings(n: usize, dim: usize) -> Vec<f32> {
 
     let mut rng = rand::rng();
 
-    let mut data = Vec::with_capacity(n);
+    let mut data = Vec::with_capacity(n * dim);
 
-    for _ in 0..n {
-        let mut v = Vec::with_capacity(dim);
-
-        for _ in 0..dim {
-            v.push(rng.random::<f32>());
-        }
-
-        data.push(v);
+    for _ in 0..n * dim {
+        data.push(rng.random::<f32>());
     }
 
     data
