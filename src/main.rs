@@ -1,4 +1,4 @@
-use rand::Rng;
+// use rand::Rng;
 use std::time::Instant;
 use rand::RngExt;
 mod hnsw_manual;
@@ -9,7 +9,7 @@ fn main() {
 
     let query = vec![0.8, 0.85];
 
-    let result = search(&graph, &query);
+    let result = search(&graph, &query,20);
 
     println!("Search result node: {}", result);
     // let dataset_sizes = [10_000, 100_000];

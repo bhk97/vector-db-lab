@@ -1,3 +1,18 @@
+
+use std::collections::{BinaryHeap, HashSet};
+use std::cmp::Reverse;
+
+#[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
+pub struct OrderedF32(pub f32);
+
+impl Eq for OrderedF32 {}
+
+impl Ord for OrderedF32 {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
+    }
+}
+
 pub struct Node {
     id: usize,
     vector: Vec<f32>,
@@ -68,66 +83,99 @@ pub fn distance(a: &[f32], b: &[f32]) -> f32 {
         .sqrt()
 }
 
-pub fn search(graph: &HNSW, query: &[f32]) -> usize {
+pub fn search(graph: &HNSW, query: &[f32], ef: usize) -> usize {
 
     let mut current = graph.entry_point;
 
     println!("Starting search from node {}", current);
 
-    for layer in (0..=graph.max_level).rev() {
+    
+    for layer in (1..=graph.max_level).rev() {
 
-        println!("--- Searching Layer {} ---", layer);
+        println!("--- Greedy Layer {} ---", layer);
 
         loop {
-
             let mut improved = false;
 
             let current_dist = distance(query, &graph.nodes[current].vector);
-
-            println!(
-                "Current Node: {} Distance: {}",
-                current,
-                current_dist
-            );
 
             for &neighbor in &graph.nodes[current].neighbors[layer] {
 
                 let neighbor_dist = distance(query, &graph.nodes[neighbor].vector);
 
-                println!(
-                    "Checking neighbor {} distance {}",
-                    neighbor,
-                    neighbor_dist
-                );
-
                 if neighbor_dist < current_dist {
-
-                    println!(
-                        "Moving from node {} → {}",
-                        current,
-                        neighbor
-                    );
+                    println!("Layer {}: {} → {}", layer, current, neighbor);
 
                     current = neighbor;
                     improved = true;
-
                     break;
                 }
             }
 
             if !improved {
-
-                println!(
-                    "No better neighbor found at layer {}",
-                    layer
-                );
-
                 break;
             }
         }
     }
 
-    println!("Final closest node: {}", current);
+    
 
-    current
+    println!("--- efSearch Layer 0 ---");
+
+    let mut visited = HashSet::new();
+
+    // candidates → min-heap (closest first)
+    let mut candidates: BinaryHeap<Reverse<(OrderedF32, usize)>> = BinaryHeap::new();
+
+    // results → max-heap (worst at top)
+    let mut results: BinaryHeap<(OrderedF32, usize)> = BinaryHeap::new();
+
+    let entry_dist = OrderedF32(distance(query, &graph.nodes[current].vector));
+
+    candidates.push(Reverse((entry_dist, current)));
+    results.push((entry_dist, current));
+    visited.insert(current);
+
+    while let Some(Reverse((curr_dist, curr_node))) = candidates.pop() {
+
+        let worst_dist = results.peek().unwrap().0;
+
+        
+        if curr_dist > worst_dist {
+            break;
+        }
+
+        for &neighbor in &graph.nodes[curr_node].neighbors[0] {
+
+            if visited.contains(&neighbor) {
+                continue;
+            }
+
+            visited.insert(neighbor);
+
+            let dist = OrderedF32(distance(query, &graph.nodes[neighbor].vector));
+
+            if results.len() < ef || dist < results.peek().unwrap().0 {
+
+                println!("Exploring {} → {}", curr_node, neighbor);
+
+                candidates.push(Reverse((dist, neighbor)));
+                results.push((dist, neighbor));
+
+                if results.len() > ef {
+                    results.pop(); // remove worst
+                }
+            }
+        }
+    }
+
+    
+    let best = results
+        .into_iter()
+        .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
+        .unwrap();
+
+    println!("Final closest node: {}", best.1);
+
+    best.1
 }
