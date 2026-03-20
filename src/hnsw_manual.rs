@@ -1,6 +1,6 @@
 use std::collections::{BinaryHeap, HashSet};
 use std::cmp::Reverse;
-use rand::Rng;
+use rand::RngExt;
 
 #[derive(PartialEq, PartialOrd, Clone, Copy, Debug)]
 pub struct OrderedF32(pub f32);
@@ -53,8 +53,8 @@ impl HNSW {
     }
 
     fn random_level(&self) -> usize {
-        let mut rng = rand::thread_rng();
-        let r: f32 = rng.gen_range(f32::EPSILON..1.0);
+        let mut rng = rand::rng();
+        let r: f32 = rng.random_range(f32::EPSILON..1.0);
         (-r.ln() * self.calculate_ml()) as usize
     }
 
@@ -214,5 +214,79 @@ impl HNSW {
             self.entry_point = Some(new_id);
             self.max_level = level;
         }
+    }
+
+    pub fn print_graph(&self) {
+        println!("\n=== HNSW Graph Visualization ===");
+        println!("Max Level: {}, M: {}, ef_construction: {}", self.max_level, self.M, self.ef_construction);
+        if let Some(ep) = self.entry_point {
+            println!("Entry Point: Node {}", ep);
+        }
+        println!("================================\n");
+
+        for l in (0..=self.max_level).rev() {
+            println!("--- Layer {} ---", l);
+            
+            // Collect nodes at this level
+            let mut level_nodes: Vec<usize> = self.nodes.iter()
+                .enumerate()
+                .filter(|(_, n)| n.level >= l)
+                .map(|(i, _)| i)
+                .collect();
+            level_nodes.sort();
+
+            for &id in &level_nodes {
+                let node = &self.nodes[id];
+                let neighbors = &node.neighbors[l];
+                
+                // Format neighbors string
+                let neighbors_str = if neighbors.is_empty() {
+                    "[]".to_string()
+                } else {
+                    format!("{:?}", neighbors)
+                };
+
+                // Visual representation of connections
+                // [Node ID] --- (neighbors)
+                print!("  [{:02}] ", id);
+                if l < node.level {
+                    print!("^ "); // Indicates it exists in higher layers
+                } else {
+                    print!("  ");
+                }
+                println!("connections: {}", neighbors_str);
+            }
+            println!("");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hnsw_visualization() {
+        // Use a smaller M to make visualization cleaner
+        let mut hnsw = HNSW::new(2, 4);
+        
+        // Insert some points
+        // Using 2D points for simplicity
+        let points = vec![
+            vec![1.0, 1.0],
+            vec![2.0, 2.0],
+            vec![10.0, 10.0],
+            vec![11.0, 11.0],
+            vec![5.0, 5.0],
+            vec![6.0, 6.0],
+            vec![12.0, 12.0],
+            vec![0.0, 0.0],
+        ];
+
+        for p in points {
+            hnsw.insert(p);
+        }
+
+        hnsw.print_graph();
     }
 }
